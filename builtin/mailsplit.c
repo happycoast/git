@@ -8,6 +8,7 @@
 #include "builtin.h"
 #include "string-list.h"
 #include "strbuf.h"
+#include "config.h"
 
 static const char git_mailsplit_usage[] =
 "git mailsplit [-d<prec>] [-f<n>] [-b] [--keep-cr] -o<directory> [(<mbox>|<Maildir>)...]";
@@ -45,6 +46,19 @@ static int is_from_line(const char *line, int len)
 
 static struct strbuf buf = STRBUF_INIT;
 static int keep_cr;
+static int mboxrd;
+
+static int is_gtfrom(const struct strbuf *buf)
+{
+	size_t min = strlen(">From ");
+	size_t ngt;
+
+	if (buf->len < min)
+		return 0;
+
+	ngt = strspn(buf->buf, ">");
+	return ngt && starts_with(buf->buf + ngt, "From ");
+}
 
 /* Called with the first line (potentially partial)
  * already in buf[] -- normally that should begin with
@@ -76,6 +90,9 @@ static int split_one(FILE *mbox, const char *name, int allow_bare)
 			strbuf_setlen(&buf, buf.len-2);
 			strbuf_addch(&buf, '\n');
 		}
+
+		if (mboxrd && is_gtfrom(&buf))
+			strbuf_remove(&buf, 0, 1);
 
 		if (fwrite(buf.buf, 1, buf.len, output) != buf.len)
 			die_errno("cannot write output");
@@ -109,7 +126,7 @@ static int populate_maildir_list(struct string_list *list, const char *path)
 		if ((dir = opendir(name)) == NULL) {
 			if (errno == ENOENT)
 				continue;
-			error("cannot opendir %s (%s)", name, strerror(errno));
+			error_errno("cannot opendir %s", name);
 			goto out;
 		}
 
@@ -174,12 +191,12 @@ static int split_maildir(const char *maildir, const char *dir,
 
 		f = fopen(file, "r");
 		if (!f) {
-			error("cannot open mail %s (%s)", file, strerror(errno));
+			error_errno("cannot open mail %s", file);
 			goto out;
 		}
 
 		if (strbuf_getwholeline(&buf, f, '\n')) {
-			error("cannot read mail %s (%s)", file, strerror(errno));
+			error_errno("cannot read mail %s", file);
 			goto out;
 		}
 
@@ -210,12 +227,22 @@ static int split_mbox(const char *file, const char *dir, int allow_bare,
 	int file_done = 0;
 
 	if (!f) {
-		error("cannot open mbox %s", file);
+		error_errno("cannot open mbox %s", file);
 		goto out;
 	}
 
 	do {
 		peek = fgetc(f);
+		if (peek == EOF) {
+			if (f == stdin)
+				/* empty stdin is OK */
+				ret = skip;
+			else {
+				fclose(f);
+				error(_("empty mbox: '%s'"), file);
+			}
+			goto out;
+		}
 	} while (isspace(peek));
 	ungetc(peek, f);
 
@@ -250,6 +277,7 @@ int cmd_mailsplit(int argc, const char **argv, const char *prefix)
 	const char **argp;
 	static const char *stdin_only[] = { "-", NULL };
 
+	git_config(git_default_config, NULL);
 	for (argp = argv+1; *argp; argp++) {
 		const char *arg = *argp;
 
@@ -271,6 +299,8 @@ int cmd_mailsplit(int argc, const char **argv, const char *prefix)
 			keep_cr = 1;
 		} else if ( arg[1] == 'o' && arg[2] ) {
 			dir = arg+2;
+		} else if (!strcmp(arg, "--mboxrd")) {
+			mboxrd = 1;
 		} else if ( arg[1] == '-' && !arg[2] ) {
 			argp++;	/* -- marks end of options */
 			break;
@@ -318,7 +348,7 @@ int cmd_mailsplit(int argc, const char **argv, const char *prefix)
 		}
 
 		if (stat(arg, &argstat) == -1) {
-			error("cannot stat %s (%s)", arg, strerror(errno));
+			error_errno("cannot stat %s", arg);
 			return 1;
 		}
 

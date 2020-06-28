@@ -4,6 +4,7 @@ test_description='ext::cmd remote "connect" helper'
 . ./test-lib.sh
 
 test_expect_success setup '
+	git config --global protocol.ext.allow user &&
 	test_tick &&
 	git commit --allow-empty -m initial &&
 	test_tick &&
@@ -84,7 +85,7 @@ test_expect_success 'set up fake git-daemon' '
 		"$TRASH_DIRECTORY/remote"
 	EOF
 	export TRASH_DIRECTORY &&
-	PATH=$TRASH_DIRECTORY:$PATH
+	PATH=$TRASH_DIRECTORY$PATH_SEP$PATH
 '
 
 test_expect_success 'ext command can connect to git daemon (no vhost)' '

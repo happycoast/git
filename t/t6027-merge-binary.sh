@@ -6,7 +6,7 @@ test_description='ask merge-recursive to merge binary files'
 
 test_expect_success setup '
 
-	cat "$TEST_DIRECTORY"/test-binary-1.png >m &&
+	cat "$TEST_DIRECTORY"/diff-lib/test-binary-1.png >m &&
 	git add m &&
 	git ls-files -s | sed -e "s/ 0	/ 1	/" >E1 &&
 	test_tick &&
@@ -45,7 +45,7 @@ test_expect_success resolve '
 		false
 	else
 		git ls-files -s >current
-		test_cmp current expect
+		test_cmp expect current
 	fi
 '
 
@@ -60,7 +60,7 @@ test_expect_success recursive '
 		false
 	else
 		git ls-files -s >current
-		test_cmp current expect
+		test_cmp expect current
 	fi
 '
 

@@ -47,12 +47,12 @@ get_needs () {
 	test -s "$1" &&
 	perl -alne '
 		next unless $F[1] eq "upload-pack<";
-		last if $F[2] eq "0000";
+		next unless $F[2] eq "want";
 		print $F[2], " ", $F[3];
 	' "$1"
 }
 
-test_expect_failure 'fetch A (new commit : 1 connection)' ' # TODO known breakage
+test_expect_success 'fetch A (new commit : 1 connection)' '
 	rm -f $U &&
 	(
 		cd cloned &&
@@ -82,7 +82,7 @@ want $T
 EOF
 '
 
-test_expect_failure 'fetch C, T (new branch, tag : 1 connection)' ' # TODO known breakage
+test_expect_success 'fetch C, T (new branch, tag : 1 connection)' '
 	rm -f $U &&
 	(
 		cd cloned &&
@@ -118,7 +118,7 @@ want $S
 EOF
 '
 
-test_expect_failure 'fetch B, S (commit and tag : 1 connection)' ' # TODO known breakage
+test_expect_success 'fetch B, S (commit and tag : 1 connection)' '
 	rm -f $U &&
 	(
 		cd cloned &&

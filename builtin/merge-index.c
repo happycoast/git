@@ -1,5 +1,7 @@
+#define USE_THE_INDEX_COMPATIBILITY_MACROS
 #include "builtin.h"
 #include "run-command.h"
+#include "config.h"
 
 static const char *pgm;
 static int one_shot, quiet;
@@ -9,7 +11,7 @@ static int merge_entry(int pos, const char *path)
 {
 	int found;
 	const char *arguments[] = { pgm, "", "", "", path, "", "", "", NULL };
-	char hexbuf[4][GIT_SHA1_HEXSZ + 1];
+	char hexbuf[4][GIT_MAX_HEXSZ + 1];
 	char ownbuf[4][60];
 
 	if (pos >= active_nr)
@@ -22,7 +24,7 @@ static int merge_entry(int pos, const char *path)
 		if (strcmp(ce->name, path))
 			break;
 		found++;
-		sha1_to_hex_r(hexbuf[stage], ce->sha1);
+		oid_to_hex_r(hexbuf[stage], &ce->oid);
 		xsnprintf(ownbuf[stage], sizeof(ownbuf[stage]), "%o", ce->ce_mode);
 		arguments[stage] = hexbuf[stage];
 		arguments[stage + 4] = ownbuf[stage];
@@ -73,6 +75,8 @@ int cmd_merge_index(int argc, const char **argv, const char *prefix)
 	 * what happened to our children.
 	 */
 	signal(SIGCHLD, SIG_DFL);
+
+	git_config(git_default_config, NULL);
 
 	if (argc < 3)
 		usage("git merge-index [-o] [-q] <merge-program> (-a | [--] [<filename>...])");

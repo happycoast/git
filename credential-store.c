@@ -3,6 +3,7 @@
 #include "credential.h"
 #include "string-list.h"
 #include "parse-options.h"
+#include "config.h"
 
 static struct lock_file credential_lock;
 
@@ -23,9 +24,9 @@ static int parse_credential_file(const char *fn,
 		return found_credential;
 	}
 
-	while (strbuf_getline(&line, fh, '\n') != EOF) {
-		credential_from_url(&entry, line.buf);
-		if (entry.username && entry.password &&
+	while (strbuf_getline_lf(&line, fh) != EOF) {
+		if (!credential_from_url_gently(&entry, line.buf, 1) &&
+		    entry.username && entry.password &&
 		    credential_match(c, &entry)) {
 			found_credential = 1;
 			if (match_cb) {
@@ -72,15 +73,16 @@ static void store_credential_file(const char *fn, struct credential *c)
 	struct strbuf buf = STRBUF_INIT;
 
 	strbuf_addf(&buf, "%s://", c->protocol);
-	strbuf_addstr_urlencode(&buf, c->username, 1);
+	strbuf_addstr_urlencode(&buf, c->username, is_rfc3986_unreserved);
 	strbuf_addch(&buf, ':');
-	strbuf_addstr_urlencode(&buf, c->password, 1);
+	strbuf_addstr_urlencode(&buf, c->password, is_rfc3986_unreserved);
 	strbuf_addch(&buf, '@');
 	if (c->host)
-		strbuf_addstr_urlencode(&buf, c->host, 1);
+		strbuf_addstr_urlencode(&buf, c->host, is_rfc3986_unreserved);
 	if (c->path) {
 		strbuf_addch(&buf, '/');
-		strbuf_addstr_urlencode(&buf, c->path, 0);
+		strbuf_addstr_urlencode(&buf, c->path,
+					is_rfc3986_reserved_or_unreserved);
 	}
 
 	rewrite_credential_file(fn, c, &buf);
@@ -142,7 +144,7 @@ static void lookup_credential(const struct string_list *fns, struct credential *
 			return; /* Found credential */
 }
 
-int main(int argc, char **argv)
+int cmd_main(int argc, const char **argv)
 {
 	const char * const usage[] = {
 		"git credential-store [<options>] <action>",
@@ -160,6 +162,8 @@ int main(int argc, char **argv)
 
 	umask(077);
 
+	git_config(git_default_config, NULL);
+
 	argc = parse_options(argc, (const char **)argv, NULL, options, usage, 0);
 	if (argc != 1)
 		usage_with_options(usage, options);
@@ -168,7 +172,7 @@ int main(int argc, char **argv)
 	if (file) {
 		string_list_append(&fns, file);
 	} else {
-		if ((file = expand_user_path("~/.git-credentials")))
+		if ((file = expand_user_path("~/.git-credentials", 0)))
 			string_list_append_nodup(&fns, file);
 		file = xdg_config_home("credentials");
 		if (file)

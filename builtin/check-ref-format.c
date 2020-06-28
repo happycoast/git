@@ -6,6 +6,7 @@
 #include "refs.h"
 #include "builtin.h"
 #include "strbuf.h"
+#include "config.h"
 
 static const char builtin_check_ref_format_usage[] =
 "git check-ref-format [--normalize] [<options>] <refname>\n"
@@ -20,7 +21,7 @@ static const char builtin_check_ref_format_usage[] =
  */
 static char *collapse_slashes(const char *refname)
 {
-	char *ret = xmalloc(strlen(refname) + 1);
+	char *ret = xmallocz(strlen(refname));
 	char ch;
 	char prev = '/';
 	char *cp = ret;
@@ -39,12 +40,15 @@ static char *collapse_slashes(const char *refname)
 static int check_ref_format_branch(const char *arg)
 {
 	struct strbuf sb = STRBUF_INIT;
+	const char *name;
 	int nongit;
 
 	setup_git_directory_gently(&nongit);
-	if (strbuf_check_branch_ref(&sb, arg))
+	if (strbuf_check_branch_ref(&sb, arg) ||
+	    !skip_prefix(sb.buf, "refs/heads/", &name))
 		die("'%s' is not a valid branch name", arg);
-	printf("%s\n", sb.buf + 11);
+	printf("%s\n", name);
+	strbuf_release(&sb);
 	return 0;
 }
 
@@ -55,6 +59,7 @@ int cmd_check_ref_format(int argc, const char **argv, const char *prefix)
 	int flags = 0;
 	const char *refname;
 
+	git_config(git_default_config, NULL);
 	if (argc == 2 && !strcmp(argv[1], "-h"))
 		usage(builtin_check_ref_format_usage);
 

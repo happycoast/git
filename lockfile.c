@@ -70,9 +70,9 @@ static void resolve_symlink(struct strbuf *path)
 }
 
 /* Make sure errno contains a meaningful value on error */
-static int lock_file(struct lock_file *lk, const char *path, int flags)
+static int lock_file(struct lock_file *lk, const char *path, int flags,
+		     int mode)
 {
-	int fd;
 	struct strbuf filename = STRBUF_INIT;
 
 	strbuf_addstr(&filename, path);
@@ -80,9 +80,9 @@ static int lock_file(struct lock_file *lk, const char *path, int flags)
 		resolve_symlink(&filename);
 
 	strbuf_addstr(&filename, LOCK_SUFFIX);
-	fd = create_tempfile(&lk->tempfile, filename.buf);
+	lk->tempfile = create_tempfile_mode(filename.buf, mode);
 	strbuf_release(&filename);
-	return fd;
+	return lk->tempfile ? lk->tempfile->fd : -1;
 }
 
 /*
@@ -100,7 +100,7 @@ static int lock_file(struct lock_file *lk, const char *path, int flags)
  * exactly once. If timeout_ms is -1, try indefinitely.
  */
 static int lock_file_timeout(struct lock_file *lk, const char *path,
-			     int flags, long timeout_ms)
+			     int flags, long timeout_ms, int mode)
 {
 	int n = 1;
 	int multiplier = 1;
@@ -108,7 +108,7 @@ static int lock_file_timeout(struct lock_file *lk, const char *path,
 	static int random_initialized = 0;
 
 	if (timeout_ms == 0)
-		return lock_file(lk, path, flags);
+		return lock_file(lk, path, flags, mode);
 
 	if (!random_initialized) {
 		srand((unsigned int)getpid());
@@ -122,7 +122,7 @@ static int lock_file_timeout(struct lock_file *lk, const char *path,
 		long backoff_ms, wait_ms;
 		int fd;
 
-		fd = lock_file(lk, path, flags);
+		fd = lock_file(lk, path, flags, mode);
 
 		if (fd >= 0)
 			return fd; /* success */
@@ -149,13 +149,15 @@ static int lock_file_timeout(struct lock_file *lk, const char *path,
 void unable_to_lock_message(const char *path, int err, struct strbuf *buf)
 {
 	if (err == EEXIST) {
-		strbuf_addf(buf, "Unable to create '%s.lock': %s.\n\n"
-		    "If no other git process is currently running, this probably means a\n"
-		    "git process crashed in this repository earlier. Make sure no other git\n"
-		    "process is running and remove the file manually to continue.",
+		strbuf_addf(buf, _("Unable to create '%s.lock': %s.\n\n"
+		    "Another git process seems to be running in this repository, e.g.\n"
+		    "an editor opened by 'git commit'. Please make sure all processes\n"
+		    "are terminated then try again. If it still fails, a git process\n"
+		    "may have crashed in this repository earlier:\n"
+		    "remove the file manually to continue."),
 			    absolute_path(path), strerror(err));
 	} else
-		strbuf_addf(buf, "Unable to create '%s.lock': %s",
+		strbuf_addf(buf, _("Unable to create '%s.lock': %s"),
 			    absolute_path(path), strerror(err));
 }
 
@@ -168,12 +170,21 @@ NORETURN void unable_to_lock_die(const char *path, int err)
 }
 
 /* This should return a meaningful errno on failure */
-int hold_lock_file_for_update_timeout(struct lock_file *lk, const char *path,
-				      int flags, long timeout_ms)
+int hold_lock_file_for_update_timeout_mode(struct lock_file *lk,
+					   const char *path, int flags,
+					   long timeout_ms, int mode)
 {
-	int fd = lock_file_timeout(lk, path, flags, timeout_ms);
-	if (fd < 0 && (flags & LOCK_DIE_ON_ERROR))
-		unable_to_lock_die(path, errno);
+	int fd = lock_file_timeout(lk, path, flags, timeout_ms, mode);
+	if (fd < 0) {
+		if (flags & LOCK_DIE_ON_ERROR)
+			unable_to_lock_die(path, errno);
+		if (flags & LOCK_REPORT_ON_ERROR) {
+			struct strbuf buf = STRBUF_INIT;
+			unable_to_lock_message(path, errno, &buf);
+			error("%s", buf.buf);
+			strbuf_release(&buf);
+		}
+	}
 	return fd;
 }
 
@@ -181,10 +192,10 @@ char *get_locked_file_path(struct lock_file *lk)
 {
 	struct strbuf ret = STRBUF_INIT;
 
-	strbuf_addstr(&ret, get_tempfile_path(&lk->tempfile));
+	strbuf_addstr(&ret, get_tempfile_path(lk->tempfile));
 	if (ret.len <= LOCK_SUFFIX_LEN ||
 	    strcmp(ret.buf + ret.len - LOCK_SUFFIX_LEN, LOCK_SUFFIX))
-		die("BUG: get_locked_file_path() called for malformed lock object");
+		BUG("get_locked_file_path() called for malformed lock object");
 	/* remove ".lock": */
 	strbuf_setlen(&ret, ret.len - LOCK_SUFFIX_LEN);
 	return strbuf_detach(&ret, NULL);

@@ -6,6 +6,7 @@
 #define PRECOMPOSE_UNICODE_C
 
 #include "cache.h"
+#include "config.h"
 #include "utf8.h"
 #include "precompose_utf8.h"
 
@@ -50,7 +51,8 @@ void probe_utf8_pathname_composition(void)
 		close(output_fd);
 		git_path_buf(&path, "%s", auml_nfd);
 		precomposed_unicode = access(path.buf, R_OK) ? 0 : 1;
-		git_config_set("core.precomposeunicode", precomposed_unicode ? "true" : "false");
+		git_config_set("core.precomposeunicode",
+			       precomposed_unicode ? "true" : "false");
 		git_path_buf(&path, "%s", auml_nfc);
 		if (unlink(path.buf))
 			die_errno(_("failed to unlink '%s'"), path.buf);
@@ -77,7 +79,7 @@ void precompose_argv(int argc, const char **argv)
 		size_t namelen;
 		oldarg = argv[i];
 		if (has_non_ascii(oldarg, (size_t)-1, &namelen)) {
-			newarg = reencode_string_iconv(oldarg, namelen, ic_precompose, NULL);
+			newarg = reencode_string_iconv(oldarg, namelen, ic_precompose, 0, NULL);
 			if (newarg)
 				argv[i] = newarg;
 		}
@@ -146,7 +148,7 @@ struct dirent_prec_psx *precompose_utf8_readdir(PREC_DIR *prec_dir)
 				if (errno || inleft) {
 					/*
 					 * iconv() failed and errno could be E2BIG, EILSEQ, EINVAL, EBADF
-					 * MacOS X avoids illegal byte sequemces.
+					 * MacOS X avoids illegal byte sequences.
 					 * If they occur on a mounted drive (e.g. NFS) it is not worth to
 					 * die() for that, but rather let the user see the original name
 					*/

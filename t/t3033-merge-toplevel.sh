@@ -19,6 +19,8 @@ test_expect_success setup '
 	test_commit three &&
 	git checkout right &&
 	test_commit four &&
+	git checkout --orphan newroot &&
+	test_commit five &&
 	git checkout master
 '
 
@@ -130,6 +132,42 @@ test_expect_success 'merge FETCH_HEAD octopus non-fast-forward' '
 	test_must_fail git rev-parse --verify HEAD^4 &&
 	git rev-parse HEAD^1 HEAD^2 HEAD^3 | sort >actual &&
 	git rev-parse two three four | sort >expect &&
+	test_cmp expect actual
+'
+
+# two-project merge
+test_expect_success 'refuse two-project merge by default' '
+	t3033_reset &&
+	git reset --hard four &&
+	test_must_fail git merge five
+'
+
+test_expect_success 'refuse two-project merge by default, quit before --autostash happens' '
+	t3033_reset &&
+	git reset --hard four &&
+	echo change >>one.t &&
+	git diff >expect &&
+	test_must_fail git merge --autostash five 2>err &&
+	test_i18ngrep ! "stash" err &&
+	git diff >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'two-project merge with --allow-unrelated-histories' '
+	t3033_reset &&
+	git reset --hard four &&
+	git merge --allow-unrelated-histories five &&
+	git diff --exit-code five
+'
+
+test_expect_success 'two-project merge with --allow-unrelated-histories with --autostash' '
+	t3033_reset &&
+	git reset --hard four &&
+	echo change >>one.t &&
+	git diff one.t >expect &&
+	git merge --allow-unrelated-histories --autostash five 2>err &&
+	test_i18ngrep "Applied autostash." err &&
+	git diff one.t >actual &&
 	test_cmp expect actual
 '
 

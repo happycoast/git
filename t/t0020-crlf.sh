@@ -83,7 +83,11 @@ test_expect_success 'safecrlf: print warning only once' '
 	git add doublewarn &&
 	git commit -m "nowarn" &&
 	for w in Oh here is CRLFQ in text; do echo $w; done | q_to_cr >doublewarn &&
-	test $(git add doublewarn 2>&1 | grep "CRLF will be replaced by LF" | wc -l) = 1
+	git add doublewarn 2>err &&
+	if test_have_prereq C_LOCALE_OUTPUT
+	then
+		test $(grep "CRLF will be replaced by LF" err | wc -l) = 1
+	fi
 '
 
 
@@ -91,6 +95,16 @@ test_expect_success 'safecrlf: git diff demotes safecrlf=true to warn' '
 	git config core.autocrlf input &&
 	git config core.safecrlf true &&
 	git diff HEAD
+'
+
+
+test_expect_success 'safecrlf: no warning with safecrlf=false' '
+	git config core.autocrlf input &&
+	git config core.safecrlf false &&
+
+	for w in I am all CRLF; do echo $w; done | append_cr >allcrlf &&
+	git add allcrlf 2>err &&
+	test_must_be_empty err
 '
 
 
@@ -145,8 +159,8 @@ test_expect_success 'checkout with autocrlf=input' '
 	rm -f tmp one dir/two three &&
 	git config core.autocrlf input &&
 	git read-tree --reset -u HEAD &&
-	test_must_fail has_cr one &&
-	test_must_fail has_cr two &&
+	! has_cr one &&
+	! has_cr dir/two &&
 	git update-index -- one dir/two &&
 	test "$one" = $(git hash-object --stdin <one) &&
 	test "$two" = $(git hash-object --stdin <dir/two) &&
@@ -223,9 +237,9 @@ test_expect_success '.gitattributes says two is binary' '
 	git config core.autocrlf true &&
 	git read-tree --reset -u HEAD &&
 
-	test_must_fail has_cr dir/two &&
+	! has_cr dir/two &&
 	verbose has_cr one &&
-	test_must_fail has_cr three
+	! has_cr three
 '
 
 test_expect_success '.gitattributes says two is input' '
@@ -234,7 +248,7 @@ test_expect_success '.gitattributes says two is input' '
 	echo "two crlf=input" >.gitattributes &&
 	git read-tree --reset -u HEAD &&
 
-	test_must_fail has_cr dir/two
+	! has_cr dir/two
 '
 
 test_expect_success '.gitattributes says two and three are text' '
@@ -256,7 +270,7 @@ test_expect_success 'in-tree .gitattributes (1)' '
 	rm -rf tmp one dir .gitattributes patch.file three &&
 	git read-tree --reset -u HEAD &&
 
-	test_must_fail has_cr one &&
+	! has_cr one &&
 	verbose has_cr three
 '
 
@@ -266,7 +280,7 @@ test_expect_success 'in-tree .gitattributes (2)' '
 	git read-tree --reset HEAD &&
 	git checkout-index -f -q -u -a &&
 
-	test_must_fail has_cr one &&
+	! has_cr one &&
 	verbose has_cr three
 '
 
@@ -277,7 +291,7 @@ test_expect_success 'in-tree .gitattributes (3)' '
 	git checkout-index -u .gitattributes &&
 	git checkout-index -u one dir/two three &&
 
-	test_must_fail has_cr one &&
+	! has_cr one &&
 	verbose has_cr three
 '
 
@@ -288,7 +302,7 @@ test_expect_success 'in-tree .gitattributes (4)' '
 	git checkout-index -u one dir/two three &&
 	git checkout-index -u .gitattributes &&
 
-	test_must_fail has_cr one &&
+	! has_cr one &&
 	verbose has_cr three
 '
 
